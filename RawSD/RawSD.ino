@@ -12,6 +12,8 @@
 #define EXT_TRIG_PIN         2
 #define EXT_TRIG             digitalWrite(EXT_TRIG_PIN, HIGH)
 
+#define BLOCK_LEN              512 //number of bytes
+
 #define MAX_WAIT_BYTES         32 //8bit cycles to wait for response
 
 #define MAX_CMD_RESEND         8 //times to retry CMD-send on error
@@ -44,7 +46,8 @@
 //avoid an 'FF' check pattern if redefining CMD8 ARG (see getR7())
 #define ARG_CMD8_33V_AA     0x00, 0x00, 0x01, 0xAA
 #define ARG_CMD8            ARG_CMD8_33V_AA //as a default
-#define ARG_CMD17_READTEST  0x00, 0x00, 0x20, 0x0C
+//removed since an address.
+//#define ARG_CMD17_READTEST  0x00, 0x00, 0x20, 0x0C
 #define ARG_CMD55           0x00, 0x00, 0x00, 0x00
 #define ARG_CMD58           0x00, 0x00, 0x00, 0x00
 //note: if ever using MMC, ACMD41 will likely be rejected; use CMD1
@@ -56,12 +59,14 @@
 #define CRC_CMD0            0x4A
 #define CRC_CMD8_33V_AA     0x43 //2.7-3.6V and a 0xAA check pattern
 #define CRC_CMD8            CRC_CMD8_33V_AA //as a default
-#define CRC_CMD17_READTEST  0x72
+//#define CRC_CMD17_READTEST  0x72
+#define CRC_CMD17_NOCRC     0x00 //crc bits can be anything if CRC not enforced
+#define CRC_CMD24_NOCRC     0x00
 #define CRC_CMD55           0x32
 #define CRC_CMD58           0x7E
 #define CRC_ACMD41_HCS      0x3B
 #define CRC_ACMD41_NOHCS    0x72
-#define CRC_ACMD41          CRC_ACMD41_HCS
+#define CRC_ACMD41          CRC_ACMD41_HCS //default HCS
 
 //R1 error flag definitions
 #define R1_IDLE             0x01 //idle flag
@@ -72,6 +77,13 @@
 #define R1_ADDR_ERR         0x20 //address error
 #define R1_PARAM_ERR        0x40 //parameter error
 
+//tokens
+#define START_TOKEN_SINGLE  0xFE
+#define START_TOKEN_MULT    0xFC
+
+//some addresses
+#define ADDR_OSNOTFOUND     0x0000200C
+#define ADDR_FREESPACE      0x000191F9
 
 unsigned long time0, time1;
 //unsigned int i; //not sure about garbage collection on loop-end
@@ -84,7 +96,7 @@ byte responseByte;
 unsigned int respTwoBytes;
 //byte ocrBytes[4]; //register
 
-byte dataBlock[512];
+byte dataBlock[BLOCK_LEN];
 
 void setup() {
   Serial.begin(9600);
@@ -105,7 +117,8 @@ void setup() {
   SPI.setClockDivider(SPI_CLOCK_DIV128);  
   SPI.setDataMode(SPI_MODE0);
   
-  Serial.print(digitalRead(CD));
+  Serial.println(digitalRead(CD));
+  
   //if (!digitalRead(CD)) { //if no card, don't run code
   while (!digitalRead(CD)) {
     //Serial.print(digitalRead(CD));
@@ -223,23 +236,32 @@ void loop() {
   /***initialization complete***/
   
   //test storage of 512 bytes
-  /*volatile byte readBlock[512];
-  for (int i=0; i<512; i++) {
+  /*volatile byte readBlock[BLOCK_LEN];
+  for (int i=0; i<BLOCK_LEN; i++) {
     readBlock[i] = 0xAA+i;
   }
-  for (int i=0; i<512; i++) {
+  for (int i=0; i<BLOCK_LEN; i++) {
     Serial.print(i);
     Serial.print(".");
     Serial.println(readBlock[i]);
   }*/
   
-  //read block into memory
+  //set up test block to be all ASCII 'U's
+  for (int i=0; i<BLOCK_LEN; i++) {
+    dataBlock[i] = 0x55;
+  }
+  //write test block to memory
+  writeBlock(ADDR_FREESPACE);
   
-  Serial.println(readBlock());//==0) {
-    for (int i=0; i<512; i++) {
+  delay(10000);
+
+  //for verification
+  //read block into memory
+
+  Serial.println(readBlock(ADDR_FREESPACE));
+    for (int i=0; i<BLOCK_LEN; i++) {
       Serial.print(((char)dataBlock[i]));
-    }
-  //}
+  }
   
   
   
@@ -291,13 +313,19 @@ unsigned int initCard() {
   return 0;
 }
 
+//returns 0 on success
 //side effect: stores in dataBlock array
-unsigned int readBlock(unsigned int maxCycles) {
+unsigned int readBlock(unsigned long blockAddr, unsigned int maxCycles) {
   unsigned int cnt;
   
-  sendCmd(17, ARG_CMD17_READTEST, CRC_CMD17_READTEST);
+  sendCmd(17, (byte)(blockAddr>>24), (byte)(blockAddr>>16),
+    (byte)(blockAddr>>8), (byte)(blockAddr), CRC_CMD17_NOCRC);
   
-  Serial.println(getR1(),BIN);
+  //Serial.println(getR1(),BIN);
+  //actually ignore idle-bit this time
+  if ((getR1() & 0xFE) | 0x00) {
+    return 0x01;
+  }
   
   cnt=0;
   do {
@@ -307,7 +335,7 @@ unsigned int readBlock(unsigned int maxCycles) {
     }
    
    responseByte = SPI.transfer(0x00);
-   Serial.println(responseByte, BIN);
+   //Serial.println(responseByte, BIN);
    
    //if an error token sent (MISO line normally high, so no false+)
    if ((~responseByte & 0xE0) == 0xE0) {
@@ -318,22 +346,65 @@ unsigned int readBlock(unsigned int maxCycles) {
    }
    
    cnt++;
-  } while(true); 
+  } while(true);
   
   //if valid data token received, continuing receipt of data packet
-  for (cnt=0; cnt<512; cnt++) {
+  for (cnt=0; cnt<BLOCK_LEN; cnt++) {
     dataBlock[cnt] = SPI.transfer(0x00);
   }
-  Serial.println("");
+  
   //read-in and currently ignore two CRC bytes
-  Serial.println(SPI.transfer(0x00));
-  Serial.println(SPI.transfer(0x00));
+  //Serial.println(SPI.transfer(0x00));
+  //Serial.println(SPI.transfer(0x00));
   
   return 0;
 }
 
-unsigned int readBlock() {
-  return readBlock(MAX_WAIT_BYTES);
+unsigned int readBlock(unsigned long blockAddr) {
+  return readBlock(blockAddr, MAX_WAIT_BYTES);
+}
+
+//writes 512-byte dataBlock array to card
+unsigned int writeBlock(unsigned long blockAddr) {
+  
+  sendCmd(24, (byte)(blockAddr>>24), (byte)(blockAddr>>16),
+    (byte)(blockAddr>>8), (byte)(blockAddr), CRC_CMD24_NOCRC);
+  
+  Serial.println(getR1(),BIN);
+  //delay(1);
+  
+  //send start-block token
+  SPI.transfer(START_TOKEN_SINGLE);
+  
+  //send data block
+  for (int i=0; i<BLOCK_LEN; i++) {
+    SPI.transfer(dataBlock[i]);
+  }
+  
+  //two CRC bytes
+  SPI.transfer(0x00);
+  SPI.transfer(0x00);
+  
+  //data response token
+  responseByte = SPI.transfer(0x00);
+  Serial.println(responseByte, BIN);
+  //delay(1);
+  
+  do {
+    responseByte = SPI.transfer(0x00);
+  } while (responseByte==0x00);
+  
+  Serial.println("No longer busy");
+  
+  //if an error token sent (MISO line normally high, so no false+)
+   /*if ((~responseByte & 0xE0) == 0xE0) {
+     //Serial.println(responseByte, BIN);
+     return 0x01;
+   } else if (responseByte==0xFE) { //data token for cmd 17 recvd
+     break;
+   }*/
+  
+  return 0;
 }
 
 //sends a #define'd command
