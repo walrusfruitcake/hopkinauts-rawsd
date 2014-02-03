@@ -1,0 +1,16 @@
+ADS1116 16-bit ADC
+-I2C comm.
+- 10-400kHz in fast mode, 10kHz-3.4MHz in high-speed mode
+
+
+LSM303 3-axis Accel+Magnetometer
+-I2C comm, 16-bit data out
+- 0-100kHz std mode, 0-400kHz fast mode
+
+
+Piezo
+-wired to ADC for input
+
+Thermistor
+-wired to ADC for input
+
