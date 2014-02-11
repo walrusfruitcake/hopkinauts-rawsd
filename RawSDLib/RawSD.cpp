@@ -1,4 +1,6 @@
+#include "Arduino.h"
 #include <SPI.h>
+#include "RawSD.h"
 
 //#define DRDY 6 //data ready pin
 #define SCLK  13
@@ -98,9 +100,9 @@ unsigned int respTwoBytes;
 
 byte dataBlock[BLOCK_LEN];
 
-void setup() {
-  Serial.begin(9600);
-  
+
+//default constructor
+RawSD::RawSD() {
   //pin config
   pinMode(10, OUTPUT); //reqd for Arduino SPI master implementation
   pinMode(CS, OUTPUT);
@@ -117,7 +119,14 @@ void setup() {
   SPI.setClockDivider(SPI_CLOCK_DIV128);  
   SPI.setDataMode(SPI_MODE0);
   
-  Serial.println(digitalRead(CD));
+  digitalRead(CD);
+}
+
+
+void setup() {
+  Serial.begin(9600);
+  
+
   
   //if (!digitalRead(CD)) { //if no card, don't run code
   while (!digitalRead(CD)) {
@@ -652,4 +661,5 @@ unsigned int clockCycle(int count) {
   SPI.end();
   return (time1 - time0);
 }*/
+
 
