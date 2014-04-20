@@ -3,7 +3,10 @@
 #include "RawSD.h"
 
 //default constructor
-RawSD::RawSD() { 
+RawSD::RawSD() {
+  Serial.begin(115200);
+  delay(1);
+  Serial.println("constructor");
   //pin config
   pinMode(10, OUTPUT); //reqd for Arduino SPI master implementation
   pinMode(CS, OUTPUT);
@@ -491,3 +494,4 @@ unsigned int RawSD::clockCycle(int count) {
   SPI.end();
   return (time1 - time0);
 }*/
+
