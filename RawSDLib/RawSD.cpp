@@ -4,9 +4,6 @@
 
 //default constructor
 RawSD::RawSD() {
-  Serial.begin(115200);
-  delay(1);
-  Serial.println("constructor");
   //pin config
   pinMode(10, OUTPUT); //reqd for Arduino SPI master implementation
   pinMode(CS, OUTPUT);

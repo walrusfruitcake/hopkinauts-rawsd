@@ -1,14 +1,16 @@
 #include "RawSD.h"
+#include "MemoryFree.h"
 #include <SPI.h>
 
 //some addresses
 #define ADDR_OSNOTFOUND     0x0000200C
-#define ADDR_FREESPACE      0x000191FA //should only be @ ~50MB pos
+#define ADDR_FREESPACE      0x000191F7 //should only be @ ~50MB pos
 
 //byte dataBlock[BLOCK_LEN];
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
+  Serial.println(freeMemory());
   RawSD sdComm;
   
   //time init
@@ -16,7 +18,7 @@ void setup() {
   sdComm.initSD();
   
   for (int i=0; i<BLOCK_LEN; i++) {
-    sdComm.dataBlock[i] = (byte)'b';
+    sdComm.dataBlock[i] = (byte)'a';
   }
   
   //write test block to memory
@@ -43,6 +45,7 @@ void setup() {
   }
   
   Serial.println("init okay");
+  Serial.println(freeMemory());
 }
 
 void loop() {
